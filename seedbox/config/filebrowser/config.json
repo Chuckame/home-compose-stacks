@@ -1,0 +1,12 @@
+{
+ "baseURL": "/",
+ "address": "",
+ "port": 8080,
+ "log": "stdout",
+ "database": "/database/filebrowser.db",
+ "root": "/data",
+ "auth": {
+  "method": "proxy",
+  "header": "Remote-User"
+ }
+}

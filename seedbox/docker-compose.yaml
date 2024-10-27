@@ -1,0 +1,200 @@
+x-log-limits: &log-limits
+  logging:
+    options:
+      max-size: 10m
+
+networks:
+  internal:
+  caddy:
+    external: true
+
+volumes:
+  downloads:
+  config_transmission:
+  config_radarr:
+  config_sonarr:
+  config_jackett:
+  config_filebrowser:
+  config_plex:
+  config_overseerr:
+  jellyfin_config:
+  jellyfin_cache:
+
+services:
+  torrent: # download torrents
+    image: ghcr.io/linuxserver/transmission:4.0.6
+    <<: *log-limits
+    restart: unless-stopped
+    networks:
+      - caddy
+      - internal
+    ports:
+      - 51413:51413
+    volumes:
+      - ./config/transmission/settings.json:/config/settings.json
+      - downloads:/downloads
+      - config_transmission:/config
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+    labels:
+      caddy: torrent.$DOMAIN_NAME
+      caddy.import: auth
+      caddy.reverse_proxy: '{{upstreams http 9091}}'
+
+  jackett: # Gather indexers (like yggtorrent)
+    image: ghcr.io/linuxserver/jackett:0.22.267
+    <<: *log-limits
+    restart: unless-stopped
+    networks:
+      - caddy
+      - internal
+    depends_on:
+      - jackett-flaresolverr
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+    volumes:
+      - config_jackett:/config
+    labels:
+      caddy: jackett.$DOMAIN_NAME
+      caddy.import: auth
+      caddy.reverse_proxy: '{{upstreams http 9117}}'
+
+  jackett-flaresolverr: # Resolves indexers behind cloudflare (like yggtorrent)
+    image: flaresolverr/flaresolverr:v3.3.21
+    <<: *log-limits
+    restart: unless-stopped
+    environment:
+      LOG_LEVEL: debug
+      LOG_HTML: "true"
+      TZ: Europe/Paris
+      LANG: en_GB
+      CAPTCHA_SOLVER: hcaptcha-solver
+    networks:
+      - internal
+
+  radarr: # search for movies using jackett indexers (need to configure jackett indexers)
+    image: ghcr.io/linuxserver/radarr:5.11.0
+    <<: *log-limits
+    restart: unless-stopped
+    networks:
+      - caddy
+      - internal
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+    volumes:
+      - config_radarr:/config
+      - downloads:/downloads
+    labels:
+      caddy: movies.$DOMAIN_NAME
+      caddy.import: auth
+      caddy.reverse_proxy: '{{upstreams http 7878}}'
+
+  sonarr: # search for series using jackett indexers (need to configure jackett indexers)
+    image: ghcr.io/linuxserver/sonarr:4.0.9
+    <<: *log-limits
+    restart: unless-stopped
+    networks:
+      - caddy
+      - internal
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+    volumes:
+      - config_sonarr:/config
+      - downloads:/downloads
+    labels:
+      caddy: series.$DOMAIN_NAME
+      caddy.import: auth
+      caddy.reverse_proxy: '{{upstreams http 8989}}'
+
+  overseerr:
+    image: sctx/overseerr:1.33.2
+    restart: unless-stopped
+    volumes:
+      - config_overseerr:/app/config
+    environment:
+      #LOG_LEVEL: debug
+      TZ: $TZ
+    networks:
+      - caddy
+    labels:
+      caddy: seedbox.$DOMAIN_NAME
+      caddy.import: auth
+      caddy.reverse_proxy: '{{upstreams http 5055}}'
+
+  plex:
+    image: ghcr.io/linuxserver/plex:1.41.0
+    <<: *log-limits
+    restart: unless-stopped
+    mem_limit: 1.5G
+    networks:
+      - caddy
+    ports:
+      - 1900:1900/udp
+      - 3005:3005/tcp
+      - 8324:8324/tcp
+      - 32400:32400/tcp
+      - 32410:32410/udp
+      - 32412:32412/udp
+      - 32413:32413/udp
+      - 32414:32414/udp
+      - 32469:32469/tcp
+    environment:
+      PLEX_UID: ${PUID}
+      PLEX_GID: ${PGID}
+      TZ: ${TZ}
+      PLEX_CLAIM: ${PLEX_CLAIM} # get it from https://www.plex.tv/claim
+    labels:
+      caddy: plex.$DOMAIN_NAME
+      caddy.reverse_proxy: '{{upstreams http 32400}}'
+    volumes:
+      - downloads:/downloads
+      - config_plex:/config
+
+  jellyfin:
+    image: ghcr.io/jellyfin/jellyfin:10.9.11
+    <<: *log-limits
+    restart: unless-stopped
+    mem_limit: 1.5G
+    networks:
+      - caddy
+    user: ${PUID}:${PGID}
+#    environment:
+    labels:
+      caddy: jellyfin.$DOMAIN_NAME
+      caddy.reverse_proxy: '{{upstreams http 8096}}'
+    volumes:
+      - downloads:/downloads:ro
+      - jellyfin_config:/config
+      - jellyfin_cache:/cache
+
+  files:
+    image: filebrowser/filebrowser:v2.31.2
+    <<: *log-limits
+    restart: unless-stopped
+    networks:
+      - caddy
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+    labels:
+      caddy: files.$DOMAIN_NAME
+      caddy.1_handle: /api/public/*
+      caddy.1_handle.reverse_proxy: '{{upstreams http 8080}}'
+      caddy.2_handle: /static/*
+      caddy.2_handle.reverse_proxy: '{{upstreams http 8080}}'
+      caddy.3_handle: /share/*
+      caddy.3_handle.reverse_proxy: '{{upstreams http 8080}}'
+      caddy.4_handle.import: auth
+      caddy.4_handle.reverse_proxy: '{{upstreams http 8080}}'
+    volumes:
+      - downloads:/data/downloads
+      - config_filebrowser:/database
+      - ./config/filebrowser/config.json:/.filebrowser.json:ro
