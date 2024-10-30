@@ -1,0 +1,21 @@
+{
+  admin off
+  acme_dns ovh {
+    endpoint {env.OVH_ENDPOINT}
+    application_key {env.OVH_APP_KEY}
+    application_secret {env.OVH_APP_SECRET}
+    consumer_key {env.OVH_CONSUMER_KEY}
+  }
+}
+
+(auth) {
+  forward_auth http://authelia { # 'authelia' corresponds to the authelia service name
+    uri /api/authz/forward-auth?authelia_url={env.AUTHELIA_PUBLIC_URL}
+    copy_headers {
+      Remote-User
+      Remote-Groups
+      Remote-Name
+      Remote-Email
+    }
+  }
+}

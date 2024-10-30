@@ -1,0 +1,55 @@
+# needs the following env vars:
+# - AUTHELIA_SESSION_SECRET_FILE
+# - AUTHELIA_JWT_SECRET_FILE
+# - AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE
+
+server:
+  host: 0.0.0.0
+  port: 80
+log:
+  level: warn
+
+default_redirection_url: https://auth.<your domain>
+
+authentication_backend:
+  password_reset:
+    disable: true
+  file:
+    path: /config/users.yml
+    # customize passwords based on https://docs.authelia.com/configuration/authentication/file.html
+    password:
+      algorithm: sha512
+      memory: 128 # blocks this much of the RAM. Tune this.
+
+access_control:
+  default_policy: deny
+  rules:
+    - domain: auth.<your domain>
+      policy: bypass
+    - domain: '*.<your domain>'
+      policy: one_factor
+    - domain: <your domain>
+      policy: one_factor
+
+session:
+  expiration: 4h
+  inactivity: 1h
+  domain: <your domain>
+
+regulation:
+  max_retries: 3
+  find_time: 120
+  ban_time: 300
+
+storage:
+  local:
+    path: /config/db.sqlite3
+
+#notifier:
+  # You need to create an app password by following: https://support.google.com/accounts/answer/185833?hl=en
+#  smtp:
+    # username: <defined in docker compose using env vars>
+    # password: xxx # Password can also be set using a secret: https://docs.authelia.com/configuration/secrets.html
+    #sender: <defined in docker compose using env vars>
+#    host: smtp.gmail.com
+#    port: 587

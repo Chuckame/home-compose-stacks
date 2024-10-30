@@ -1,0 +1,80 @@
+version: "3.8"
+services:
+  caddy:
+    build:
+      context: ./config/caddy
+      args:
+        CADDY_VERSION: 2.7.6     
+        CADDY_DOCKER_PROXY_VERSION: 2.7.0
+        CADDY_DNS_OVH_VERSION: 0.0.2
+    ports:
+      - 80:80
+      - 443:443
+    environment:
+      CADDY_INGRESS_NETWORKS: caddy
+      CADDY_DOCKER_CADDYFILE_PATH: /etc/caddy/Caddyfile
+      CADDY_DOCKER_PROCESS_CADDYFILE: "true"
+      AUTHELIA_PUBLIC_URL: https://auth.$DOMAIN_NAME
+      OVH_ENDPOINT: $OVH_ENDPOINT
+      OVH_APP_KEY: $OVH_APP_KEY
+      OVH_APP_SECRET: $OVH_APP_SECRET
+      OVH_CONSUMER_KEY: $OVH_CONSUMER_KEY
+    networks:
+      - caddy
+      - dockerproxy
+    volumes:
+      - caddy_data:/data
+      - ./config/caddy/Caddyfile:/etc/caddy/Caddyfile
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+    depends_on:
+      - dockerproxy
+#    labels:
+#      caddy.1_debug:
+
+  authelia:
+    image: authelia/authelia:4.38.15
+    restart: unless-stopped
+    networks:
+      - caddy
+    volumes:
+      - ./config/authelia/configuration.yml:/config/configuration.yml:ro
+      - ./config/authelia/users.yml:/config/users.yml
+    environment:
+      TZ: $TZ
+      AUTHELIA_JWT_SECRET_FILE: /run/secrets/authelia_jwt_secret
+      AUTHELIA_SESSION_SECRET_FILE: /run/secrets/authelia_session_secret
+      AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE: /run/secrets/authelia_storage_encryption_key
+      AUTHELIA_NOTIFIER_SMTP_PASSWORD_FILE: /run/secrets/authelia_notifier_smtp_password
+      AUTHELIA_NOTIFIER_SMTP_USERNAME: $SMTP_USER
+      AUTHELIA_NOTIFIER_SMTP_SENDER: auth@$DOMAIN_NAME
+    secrets:
+      - authelia_jwt_secret
+      - authelia_session_secret
+      - authelia_storage_encryption_key
+      - authelia_notifier_smtp_password
+    labels:
+      caddy: auth.$DOMAIN_NAME
+      caddy.reverse_proxy: '{{upstreams http 80}}'
+
+networks:
+  dockerproxy:
+  caddy:
+    name: caddy
+    ipam:
+      config:
+        - subnet: 172.27.0.0/16
+          gateway: 172.27.0.1
+
+volumes:
+  caddy_data:
+
+secrets:
+  authelia_jwt_secret:
+    file: ./secrets/authelia/jwt_secret
+  authelia_session_secret:
+    file: ./secrets/authelia/session_secret
+  authelia_storage_encryption_key:
+    file: ./secrets/authelia/storage_encryption_key
+  authelia_notifier_smtp_password:
+    file: ./secrets/authelia/notifier_smtp_password
